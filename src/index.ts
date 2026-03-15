@@ -1,5 +1,23 @@
 export { SendGridClient } from "./client";
-export { ValidationError, SendGridError } from "./errors";
+export {
+  type Logger,
+  type LogLevel,
+  type LogContext,
+  noopLogger,
+  createConsoleLogger,
+  redactEmail,
+  createRequestId,
+} from "./logger";
+export {
+  ErrorCode,
+  EmailerError,
+  ValidationError,
+  ConfigurationError,
+  TransportError,
+  TimeoutError,
+  SerializationError,
+  SendGridError,
+} from "./errors";
 export {
   SENDGRID_BASE_URL,
   SENDGRID_EU_BASE_URL,
