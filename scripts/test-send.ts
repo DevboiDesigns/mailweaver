@@ -2,8 +2,8 @@
  * Test script to send a real email via SendGrid.
  *
  * Usage:
- *   npm run test:send -- user@example.com
- *   SENDGRID_FROM_EMAIL=noreply@example.com npm run test:send -- user@example.com
+ *   SENDGRID_API_KEY=your_key npm run test:send -- user@example.com
+ *   SENDGRID_API_KEY=your_key SENDGRID_FROM_EMAIL=noreply@example.com npm run test:send -- user@example.com  (also sets FROM)
  *
  * Required env vars:
  *   SENDGRID_API_KEY  - Your SendGrid API key
