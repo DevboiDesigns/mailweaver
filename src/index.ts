@@ -1,3 +1,13 @@
+/**
+ * Public entrypoint for the emailer library.
+ *
+ * Consumers should import everything from the package root:
+ *
+ *   import { SendGridClient, type SendEmailOptions } from "@devboidesigns/emailer-library";
+ *
+ * This module re-exports the stable public API surface and is the only file
+ * that will be considered part of the supported public contract.
+ */
 export { SendGridClient } from "./client";
 export {
   type Logger,
