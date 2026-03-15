@@ -28,9 +28,32 @@ beforeEach(() => {
 
 describe("SendGridClient", () => {
   describe("constructor", () => {
-    it("throws when apiKey is missing", () => {
-      expect(() => new SendGridClient({ apiKey: "" })).toThrow();
-      expect(() => new SendGridClient({ apiKey: "" as unknown as string })).toThrow();
+    it("throws ConfigurationError when apiKey is missing", () => {
+      expect(() => new SendGridClient({ apiKey: "" })).toThrow(ConfigurationError);
+      expect(() => new SendGridClient({ apiKey: "" as unknown as string })).toThrow(
+        ConfigurationError
+      );
+    });
+
+    it("throws ConfigurationError when apiKey is whitespace only", () => {
+      expect(() => new SendGridClient({ apiKey: "   " })).toThrow(ConfigurationError);
+    });
+
+    it("throws ConfigurationError when timeoutMs is invalid", () => {
+      expect(
+        () => new SendGridClient({ apiKey: "key", timeoutMs: 0 })
+      ).toThrow(ConfigurationError);
+      expect(
+        () => new SendGridClient({ apiKey: "key", timeoutMs: -100 })
+      ).toThrow(ConfigurationError);
+    });
+
+    it("accepts valid config with timeoutMs", () => {
+      const client = new SendGridClient({
+        apiKey: "test-key",
+        timeoutMs: 10000,
+      });
+      expect(client).toBeInstanceOf(SendGridClient);
     });
 
     it("accepts valid config", () => {
@@ -152,6 +175,51 @@ describe("SendGridClient", () => {
       await expect(client.send(minimalValidOptions)).rejects.toMatchObject({
         statusCode: 401,
       });
+    });
+
+    it("propagates TransportError from network failures", async () => {
+      mockFetch.mockRejectedValue(new Error("Network failure"));
+
+      const client = new SendGridClient({ apiKey: "test-key" });
+
+      const err = await client.send(minimalValidOptions).catch((e) => e);
+      expect(err).toBeInstanceOf(EmailerError);
+      expect(err.message).toContain("Network failure");
+    });
+
+    it("calls logger on success when provided", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        headers: new Headers(),
+      });
+
+      const mockLogger = createMockLogger();
+      const client = new SendGridClient({
+        apiKey: "test-key",
+        logger: mockLogger,
+      });
+
+      await client.send(minimalValidOptions);
+
+      expect(mockLogger.calls.some((c) => c.level === "info" && c.message.includes("succeeded"))).toBe(true);
+    });
+
+    it("calls logger on validation failure when provided", async () => {
+      const mockLogger = createMockLogger();
+      const client = new SendGridClient({
+        apiKey: "test-key",
+        logger: mockLogger,
+      });
+
+      await expect(
+        client.send({
+          ...minimalValidOptions,
+          to: "invalid-email",
+        })
+      ).rejects.toThrow(ValidationError);
+
+      expect(mockLogger.calls.some((c) => c.level === "warn" && c.message.includes("validation failed"))).toBe(true);
     });
 
     it("uses baseUrl from config", async () => {
