@@ -43,7 +43,7 @@ await client.send({
 Create a SendGrid API key from the [SendGrid dashboard](https://app.sendgrid.com/settings/api_keys) and pass it to the client:
 
 ```typescript
-import { SendGridClient, createConsoleLogger } from "omnimailer";
+import { SendGridClient, createConsoleLogger } from "mailweaver";
 
 // From environment variable (recommended)
 const client = new SendGridClient({ apiKey: process.env.SENDGRID_API_KEY! });
@@ -223,7 +223,7 @@ The library uses typed errors with error codes for programmatic handling. All er
 Thrown before the request is sent:
 
 ```typescript
-import { SendGridClient, ValidationError } from "omnimailer";
+import { SendGridClient, ValidationError } from "mailweaver";
 
 try {
   await client.send({

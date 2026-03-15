@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: "20.x"
           registry-url: "https://npm.pkg.github.com"
-          scope: "@DevboiDesigns"
+          # scope removed for unscoped package
           cache: "npm"
 
       - run: npm ci
