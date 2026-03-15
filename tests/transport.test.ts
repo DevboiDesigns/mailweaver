@@ -178,6 +178,35 @@ describe("sendMail", () => {
     );
   });
 
+  it("calls logger when provided", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 202,
+      headers: new Headers(),
+    });
+
+    const logCalls: { level: string; message: string }[] = [];
+    const mockLogger = {
+      debug: (msg: string) => logCalls.push({ level: "debug", message: msg }),
+      info: (msg: string) => logCalls.push({ level: "info", message: msg }),
+      warn: (msg: string) => logCalls.push({ level: "warn", message: msg }),
+      error: (msg: string) => logCalls.push({ level: "error", message: msg }),
+    };
+
+    await sendMail(validBody, { ...config, logger: mockLogger });
+
+    expect(logCalls.some((c) => c.level === "info" && c.message.includes("succeeded"))).toBe(true);
+  });
+
+  it("throws TransportError when fetch rejects with non-Error", async () => {
+    mockFetch.mockRejectedValue("string rejection");
+
+    await expect(sendMail(validBody, config)).rejects.toThrow(TransportError);
+    await expect(sendMail(validBody, config)).rejects.toMatchObject({
+      message: expect.stringContaining("string rejection"),
+    });
+  });
+
   it("handles non-JSON error response", async () => {
     mockFetch.mockResolvedValue({
       ok: false,
@@ -191,5 +220,63 @@ describe("sendMail", () => {
       statusCode: 500,
       errors: [],
     });
+  });
+
+  it("logs isRetryable: true for 408 (matches SendGridError.isRetryable)", async () => {
+    const errorCalls: { message: string; context?: Record<string, unknown> }[] = [];
+    const mockLogger = {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: (msg: string, ctx?: Record<string, unknown>) =>
+        errorCalls.push({ message: msg, context: ctx }),
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 408,
+      headers: new Headers(),
+      json: () =>
+        Promise.resolve({
+          errors: [{ message: "Request Timeout", field: null }],
+        }),
+    });
+
+    const err = await sendMail(validBody, { ...config, logger: mockLogger }).catch(
+      (e) => e
+    );
+
+    expect(err).toBeInstanceOf(SendGridError);
+    expect(err.isRetryable()).toBe(true);
+    const apiErrorLog = errorCalls.find((c) => c.message.includes("SendGrid API error"));
+    expect(apiErrorLog?.context?.isRetryable).toBe(true);
+  });
+
+  it("logs isRetryable: false for 400 (matches SendGridError.isRetryable)", async () => {
+    const errorCalls: { message: string; context?: Record<string, unknown> }[] = [];
+    const mockLogger = {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: (msg: string, ctx?: Record<string, unknown>) =>
+        errorCalls.push({ message: msg, context: ctx }),
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      headers: new Headers(),
+      json: () =>
+        Promise.resolve({
+          errors: [{ message: "Bad Request", field: null }],
+        }),
+    });
+
+    await expect(
+      sendMail(validBody, { ...config, logger: mockLogger })
+    ).rejects.toThrow(SendGridError);
+
+    const apiErrorLog = errorCalls.find((c) => c.message.includes("SendGrid API error"));
+    expect(apiErrorLog?.context?.isRetryable).toBe(false);
   });
 });

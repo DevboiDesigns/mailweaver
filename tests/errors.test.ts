@@ -6,6 +6,7 @@ import {
   SendGridError,
   TransportError,
   TimeoutError,
+  SerializationError,
 } from "../src/errors";
 
 describe("errors", () => {
