@@ -1,6 +1,6 @@
 # SendGrid Limitations
 
-This document describes the limits enforced by the emailer-library based on [SendGrid's official Mail Send API documentation](https://docs.sendgrid.com/api-reference/mail-send/limitations).
+This document describes the limits enforced by mailweaver based on [SendGrid's official Mail Send API documentation](https://docs.sendgrid.com/api-reference/mail-send/limitations).
 
 ## Summary Table
 

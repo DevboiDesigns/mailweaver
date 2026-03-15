@@ -25,7 +25,7 @@ describe("integration (SendGrid API)", () => {
       to: "test@example.com",
       from: process.env.SENDGRID_FROM_EMAIL ?? "test@example.com",
       subject: "Integration Test",
-      text: "This is a test from emailer-library.",
+      text: "This is a test from mailweaver.",
       sandboxMode: true,
     });
 

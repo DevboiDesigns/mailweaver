@@ -244,7 +244,7 @@ try {
 Thrown when the SendGrid API returns an error. Use `isRetryable()` and `getRetryAfterMs()` for retry logic:
 
 ```typescript
-import { SendGridClient, SendGridError } from "omnimailer";
+import { SendGridClient, SendGridError } from "mailweaver";
 
 try {
   await client.send(options);
@@ -291,7 +291,7 @@ Pass a `logger` to enable structured, PII-safe logging. Logs are JSON-formatted 
 ### Built-in console logger
 
 ```typescript
-import { SendGridClient, createConsoleLogger } from "omnimailer";
+import { SendGridClient, createConsoleLogger } from "mailweaver";
 
 const client = new SendGridClient({
   apiKey: process.env.SENDGRID_API_KEY!,
@@ -307,7 +307,7 @@ const client = new SendGridClient({
 Implement the `Logger` interface to integrate with pino, winston, or your logging infrastructure:
 
 ```typescript
-import type { Logger, LogContext } from "omnimailer";
+import type { Logger, LogContext } from "mailweaver";
 
 const myLogger: Logger = {
   debug: (msg, ctx) => log.debug(ctx, msg),

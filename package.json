@@ -1,5 +1,5 @@
 {
-  "name": "omnimailer",
+  "name": "mailweaver",
   "version": "1.0.0",
   "description": "Library for sending emails",
   "main": "./dist/index.js",
@@ -8,16 +8,19 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/DevboiDesigns/emailer-library.git"
+    "url": "https://github.com/DevboiDesigns/mailweaver.git"
   },
   "scripts": {
     "build": "tsup",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "test:send": "ts-node scripts/test-send.ts",
-    "release": "npm run build && npm publish"
+    "release": "npm run build && npm publish --access public"
   },
   "engines": {
     "node": ">=18"

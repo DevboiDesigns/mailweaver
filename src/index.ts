@@ -3,7 +3,7 @@
  *
  * Consumers should import everything from the package root:
  *
- *   import { SendGridClient, type SendEmailOptions } from "@devboidesigns/emailer-library";
+ *   import { SendGridClient, type SendEmailOptions } from "mailweaver";
  *
  * This module re-exports the stable public API surface and is the only file
  * that will be considered part of the supported public contract.
