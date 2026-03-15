@@ -12,6 +12,7 @@ import {
   validateSendAt,
   validateReplyToList,
   validateEmailSize,
+  estimateEmailSize,
 } from "../src/validation/limits";
 import { ValidationError } from "../src/errors";
 import { MAX_RECIPIENTS, MAX_CUSTOM_ARGS_BYTES } from "../src/constants";
@@ -83,6 +84,12 @@ describe("schemas", () => {
     it("throws for invalid email in list", () => {
       expect(() =>
         validateEmailAddresses([{ email: "invalid" }], "to")
+      ).toThrow(ValidationError);
+    });
+
+    it("throws for non-object in list", () => {
+      expect(() =>
+        validateEmailAddresses([{ email: "a@b.com" }, 123 as unknown as { email: string }], "to")
       ).toThrow(ValidationError);
     });
   });
@@ -175,6 +182,12 @@ describe("limits", () => {
       expect(() =>
         validateCategories(["x".repeat(256)])
       ).toThrow(/255/);
+    });
+
+    it("throws for non-string category", () => {
+      expect(() =>
+        validateCategories(["valid", 123 as unknown as string])
+      ).toThrow(ValidationError);
     });
   });
 
