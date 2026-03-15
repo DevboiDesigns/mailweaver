@@ -19,7 +19,8 @@
   },
   "scripts": {
     "build": "tsup",
-    "test": "jest"
+    "test": "jest",
+    "release": "npm run build && npm publish"
   },
   "engines": {
     "node": ">=18"
