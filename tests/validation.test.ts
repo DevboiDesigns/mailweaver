@@ -219,4 +219,18 @@ describe("limits", () => {
       expect(() => validateEmailSize(1024)).not.toThrow();
     });
   });
+
+  describe("estimateEmailSize", () => {
+    it("returns byte size of payload", () => {
+      const payload = {
+        personalizations: [{ to: [{ email: "a@b.com" }] }],
+        from: { email: "x@y.com" },
+        subject: "Test",
+        content: [{ type: "text/plain", value: "Hello" }],
+      };
+      const size = estimateEmailSize(payload);
+      expect(size).toBeGreaterThan(0);
+      expect(size).toBe(Buffer.byteLength(JSON.stringify(payload), "utf8"));
+    });
+  });
 });
