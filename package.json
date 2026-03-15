@@ -1,5 +1,5 @@
 {
-  "name": "emailer-library",
+  "name": "@devboidesigns/emailer-library",
   "version": "0.0.1",
   "description": "Library for sending emails",
   "main": "./dist/index.js",
@@ -9,7 +9,9 @@
     "dist"
   ],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://npm.pkg.github.com",
+    "scope": "@devboidesigns",
+    "access": "public"
   },
   "repository": {
     "type": "git",
