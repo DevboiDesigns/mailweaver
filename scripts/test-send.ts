@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Test script to send a real email via SendGrid.
  *
@@ -53,9 +52,18 @@ async function main() {
 
     console.log(`✓ Email sent successfully (status: ${result.statusCode})`);
   } catch (err) {
-    console.error("✗ Failed to send email:", err instanceof Error ? err.message : err);
+    console.error(
+      "✗ Failed to send email:",
+      err instanceof Error ? err.message : err
+    );
     process.exit(1);
   }
 }
 
-main();
+main().catch((err) => {
+  console.error(
+    "✗ Unexpected failure before send:",
+    err instanceof Error ? err.message : err
+  );
+  process.exit(1);
+});
