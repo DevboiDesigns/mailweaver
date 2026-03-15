@@ -1,6 +1,14 @@
-import { SendGridError } from "./errors";
+import {
+  SendGridError,
+  TransportError,
+  TimeoutError,
+  SerializationError,
+} from "./errors";
 import type { RateLimitInfo, SendGridErrorDetail } from "./types";
 import { SENDGRID_BASE_URL, MAIL_SEND_PATH } from "./constants";
+import type { Logger } from "./logger";
+import { noopLogger } from "./logger";
+import { createRequestId } from "./logger";
 
 /** Mail Send API request body (SendGrid v3 format) */
 export interface MailSendBody {
