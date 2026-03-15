@@ -1,9 +1,10 @@
 name: Test and deploy on tag
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+  # push:
+  #   tags:
+  #     - "v*"
 
 jobs:
   test-and-deploy:
