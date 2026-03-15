@@ -1,6 +1,6 @@
 {
   "name": "@devboidesigns/emailer-library",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "description": "Library for sending emails",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -20,6 +20,7 @@
   "scripts": {
     "build": "tsup",
     "test": "jest",
+    "test:coverage": "jest --coverage",
     "release": "npm run build && npm publish"
   },
   "engines": {

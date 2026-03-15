@@ -1,11 +1,11 @@
 # Emailer Library
 
-A reusable TypeScript library for sending emails via the SendGrid v3 API. Includes input validation against SendGrid limits, full type safety, and clear error handling.
+A reusable TypeScript library for sending emails via the SendGrid v3 API. Includes input validation against SendGrid limits, full type safety, production-grade error handling, and structured logging.
 
 ## Installation
 
 ```bash
-npm install emailer-library
+npm install @devboidesigns/emailer-library
 ```
 
 **Requirements:** Node.js 18+ (uses native `fetch`)
@@ -13,7 +13,7 @@ npm install emailer-library
 ## Quick Start
 
 ```typescript
-import { SendGridClient } from "emailer-library";
+import { SendGridClient } from "@devboidesigns/emailer-library";
 
 const client = new SendGridClient({ apiKey: process.env.SENDGRID_API_KEY! });
 await client.send({
@@ -30,11 +30,18 @@ await client.send({
 Create a SendGrid API key from the [SendGrid dashboard](https://app.sendgrid.com/settings/api_keys) and pass it to the client:
 
 ```typescript
+import { SendGridClient, createConsoleLogger } from "@devboidesigns/emailer-library";
+
 // From environment variable (recommended)
 const client = new SendGridClient({ apiKey: process.env.SENDGRID_API_KEY! });
 
-// Or directly
-const client = new SendGridClient({ apiKey: "SG.xxx" });
+// With optional config
+const clientWithOptions = new SendGridClient({
+  apiKey: process.env.SENDGRID_API_KEY!,
+  baseUrl: "https://api.eu.sendgrid.com",  // EU region
+  timeoutMs: 10000,                         // Request timeout
+  logger: createConsoleLogger({ minLevel: "info" }),  // Structured logging
+});
 ```
 
 Ensure your `from` address is a [verified sender](https://docs.sendgrid.com/ui/sending-email/sender-verification) in your SendGrid account.
@@ -158,12 +165,25 @@ await client.send({
 
 ## Error Handling
 
+The library uses typed errors with error codes for programmatic handling. All errors extend `EmailerError` and include a `code` property.
+
+### Error types
+
+| Error | Code | When |
+|-------|------|------|
+| `ValidationError` | `VALIDATION_ERROR` | Input violates SendGrid limits or format rules |
+| `ConfigurationError` | `CONFIGURATION_ERROR` | Invalid client config (e.g. missing apiKey) |
+| `SendGridError` | `SENDGRID_API_ERROR` | SendGrid API returns 4xx/5xx |
+| `TransportError` | `NETWORK_ERROR` | Network failure (DNS, connection refused) |
+| `TimeoutError` | `TIMEOUT_ERROR` | Request timed out |
+| `SerializationError` | `SERIALIZATION_ERROR` | Request body could not be serialized to JSON |
+
 ### ValidationError
 
-Thrown before the request is sent when input violates SendGrid limits or format rules:
+Thrown before the request is sent:
 
 ```typescript
-import { SendGridClient, ValidationError } from "emailer-library";
+import { SendGridClient, ValidationError } from "@devboidesigns/emailer-library";
 
 try {
   await client.send({
@@ -179,24 +199,27 @@ try {
 }
 ```
 
-### SendGridError
+### SendGridError and retries
 
-Thrown when the SendGrid API returns an error (4xx, 5xx):
+Thrown when the SendGrid API returns an error. Use `isRetryable()` and `getRetryAfterMs()` for retry logic:
 
 ```typescript
-import { SendGridClient, SendGridError } from "emailer-library";
+import { SendGridClient, SendGridError } from "@devboidesigns/emailer-library";
 
 try {
   await client.send(options);
 } catch (err) {
   if (err instanceof SendGridError) {
     console.error("API error:", err.statusCode, err.errors);
-    if (err.statusCode === 429) {
-      console.log("Rate limit:", err.rateLimit);
+    if (err.isRetryable()) {
+      const delayMs = err.getRetryAfterMs();  // For 429: uses rate limit reset
+      if (delayMs) setTimeout(() => retry(), delayMs);
     }
   }
 }
 ```
+
+`isRetryable()` returns `true` for 429, 5xx, and 408. `getRetryAfterMs()` returns a suggested delay for 429 when rate limit headers are present.
 
 ### Rate limits
 
@@ -208,6 +231,61 @@ if (err instanceof SendGridError && err.rateLimit) {
   console.log(`Resets at: ${new Date(err.rateLimit.reset * 1000)}`);
 }
 ```
+
+### Error serialization
+
+All errors implement `toJSON()` for logging and monitoring:
+
+```typescript
+catch (err) {
+  if (EmailerError.isEmailerError(err)) {
+    console.error(JSON.stringify(err.toJSON()));
+  }
+}
+```
+
+## Logging
+
+Pass a `logger` to enable structured, PII-safe logging. Logs are JSON-formatted and never include API keys, email content, or full addresses.
+
+### Built-in console logger
+
+```typescript
+import { SendGridClient, createConsoleLogger } from "@devboidesigns/emailer-library";
+
+const client = new SendGridClient({
+  apiKey: process.env.SENDGRID_API_KEY!,
+  logger: createConsoleLogger({
+    minLevel: "info",   // "debug" | "info" | "warn" | "error"
+    prefix: "[emailer]",
+  }),
+});
+```
+
+### Custom logger
+
+Implement the `Logger` interface to integrate with pino, winston, or your logging infrastructure:
+
+```typescript
+import type { Logger, LogContext } from "@devboidesigns/emailer-library";
+
+const myLogger: Logger = {
+  debug: (msg, ctx) => log.debug(ctx, msg),
+  info: (msg, ctx) => log.info(ctx, msg),
+  warn: (msg, ctx) => log.warn(ctx, msg),
+  error: (msg, ctx) => log.error(ctx, msg),
+  child: (ctx) => myLogger.child ? myLogger.child(ctx) : myLogger,
+};
+
+const client = new SendGridClient({ apiKey: "...", logger: myLogger });
+```
+
+### What gets logged
+
+- **debug**: Validation start, request start (recipient count, template usage)
+- **info**: Send succeeded (status code, rate limit)
+- **warn**: Validation failures
+- **error**: Send failed, API errors, network/timeout errors
 
 ## EU Region
 
@@ -242,12 +320,42 @@ See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) for details.
 ### SendGridClient
 
 ```typescript
-const client = new SendGridClient(config: { apiKey: string; baseUrl?: string });
+const client = new SendGridClient(config: {
+  apiKey: string;
+  baseUrl?: string;
+  timeoutMs?: number;
+  logger?: Logger;
+});
 ```
+
+| Config | Type | Description |
+|--------|------|-------------|
+| `apiKey` | `string` | SendGrid API key (required) |
+| `baseUrl` | `string` | Override API base URL (e.g. EU region) |
+| `timeoutMs` | `number` | Request timeout in milliseconds |
+| `logger` | `Logger` | Optional structured logger |
 
 #### send(options: SendEmailOptions): Promise<SendResponse>
 
 Sends an email. Returns `{ statusCode, headers, rateLimit? }` on success.
+
+### Error classes and codes
+
+- `ErrorCode` – Constants: `VALIDATION_ERROR`, `CONFIGURATION_ERROR`, `SENDGRID_API_ERROR`, `NETWORK_ERROR`, `TIMEOUT_ERROR`, `SERIALIZATION_ERROR`, `UNKNOWN_ERROR`
+- `EmailerError` – Base class; use `isEmailerError()` and `toJSON()`
+- `ValidationError` – Pre-send validation failures
+- `ConfigurationError` – Invalid client config
+- `SendGridError` – API errors; `isRetryable()`, `getRetryAfterMs()`
+- `TransportError` – Network failures
+- `TimeoutError` – Request timeout
+- `SerializationError` – JSON serialization failure
+
+### Logger utilities
+
+- `createConsoleLogger(options?)` – JSON logger for console
+- `noopLogger` – No-op logger (default when none provided)
+- `redactEmail(email)` – Redact email for safe logging
+- `createRequestId()` – Generate request correlation ID
 
 ### Types
 
@@ -255,6 +363,7 @@ Sends an email. Returns `{ statusCode, headers, rateLimit? }` on success.
 - `EmailAddress` – `{ email: string; name?: string }`
 - `Attachment` – `{ content: string; filename: string; type?: string; disposition?: "inline" | "attachment"; content_id?: string }`
 - `SendResponse` – `{ statusCode: number; headers: Record<string, string>; rateLimit?: RateLimitInfo }`
+- `Logger` – `{ debug, info, warn, error, child? }`
 
 ## License
 

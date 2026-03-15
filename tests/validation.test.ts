@@ -12,6 +12,7 @@ import {
   validateSendAt,
   validateReplyToList,
   validateEmailSize,
+  estimateEmailSize,
 } from "../src/validation/limits";
 import { ValidationError } from "../src/errors";
 import { MAX_RECIPIENTS, MAX_CUSTOM_ARGS_BYTES } from "../src/constants";
@@ -83,6 +84,12 @@ describe("schemas", () => {
     it("throws for invalid email in list", () => {
       expect(() =>
         validateEmailAddresses([{ email: "invalid" }], "to")
+      ).toThrow(ValidationError);
+    });
+
+    it("throws for non-object in list", () => {
+      expect(() =>
+        validateEmailAddresses([{ email: "a@b.com" }, 123 as unknown as { email: string }], "to")
       ).toThrow(ValidationError);
     });
   });
@@ -176,6 +183,12 @@ describe("limits", () => {
         validateCategories(["x".repeat(256)])
       ).toThrow(/255/);
     });
+
+    it("throws for non-string category", () => {
+      expect(() =>
+        validateCategories(["valid", 123 as unknown as string])
+      ).toThrow(ValidationError);
+    });
   });
 
   describe("validateSendAt", () => {
@@ -217,6 +230,20 @@ describe("limits", () => {
 
     it("accepts size under 30MB", () => {
       expect(() => validateEmailSize(1024)).not.toThrow();
+    });
+  });
+
+  describe("estimateEmailSize", () => {
+    it("returns byte size of payload", () => {
+      const payload = {
+        personalizations: [{ to: [{ email: "a@b.com" }] }],
+        from: { email: "x@y.com" },
+        subject: "Test",
+        content: [{ type: "text/plain", value: "Hello" }],
+      };
+      const size = estimateEmailSize(payload);
+      expect(size).toBeGreaterThan(0);
+      expect(size).toBe(Buffer.byteLength(JSON.stringify(payload), "utf8"));
     });
   });
 });

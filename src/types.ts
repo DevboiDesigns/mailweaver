@@ -2,6 +2,8 @@
  * Type definitions for the SendGrid email library.
  */
 
+import type { Logger } from "./logger";
+
 /** Email address with optional display name */
 export interface EmailAddress {
   email: string;
@@ -38,6 +40,10 @@ export interface Attachment {
 export interface SendGridConfig {
   apiKey: string;
   baseUrl?: string;
+  /** Request timeout in milliseconds. Default: no timeout. */
+  timeoutMs?: number;
+  /** Optional logger for structured production logging. */
+  logger?: Logger;
 }
 
 /** Options for sending a single or batch email */

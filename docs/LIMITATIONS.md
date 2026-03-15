@@ -62,7 +62,7 @@ SendGrid applies rate limits per endpoint. When you exceed the limit, the API re
 - `X-RateLimit-Remaining` – Requests remaining
 - `X-RateLimit-Reset` – Unix timestamp when the limit resets
 
-The library surfaces this in `SendGridError.rateLimit` when a 429 is received.
+The library surfaces this in `SendGridError.rateLimit` when a 429 is received. Use `err.isRetryable()` to check if the error is transient (429, 5xx, 408) and `err.getRetryAfterMs()` to get a suggested retry delay for rate-limited requests.
 
 ## Official Documentation
 

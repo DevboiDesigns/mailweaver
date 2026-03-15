@@ -8,6 +8,14 @@ import { sendMail } from "./transport";
 import type { MailSendBody } from "./transport";
 import { toEmailAddresses } from "./validation";
 import {
+  ConfigurationError,
+  EmailerError,
+  ErrorCode,
+  SendGridError,
+} from "./errors";
+import type { Logger, LogContext } from "./logger";
+import { noopLogger, redactEmail } from "./logger";
+import {
   validateEmailFormat,
   validateFromEmailAscii,
   validateEmailAddresses,
@@ -140,13 +148,40 @@ function buildMailSendBody(options: SendEmailOptions): MailSendBody {
 export class SendGridClient {
   private readonly apiKey: string;
   private readonly baseUrl?: string;
+  private readonly timeoutMs?: number;
+  private readonly logger: Logger;
 
-  constructor(config: { apiKey: string; baseUrl?: string }) {
+  constructor(config: {
+    apiKey: string;
+    baseUrl?: string;
+    timeoutMs?: number;
+    logger?: Logger;
+  }) {
     if (!config.apiKey || typeof config.apiKey !== "string") {
-      throw new Error("SendGridClient requires a valid apiKey");
+      throw new ConfigurationError(
+        "SendGridClient requires a valid apiKey",
+        "apiKey"
+      );
     }
-    this.apiKey = config.apiKey;
+    const trimmed = config.apiKey.trim();
+    if (!trimmed) {
+      throw new ConfigurationError(
+        "apiKey cannot be empty or whitespace",
+        "apiKey"
+      );
+    }
+    if (config.timeoutMs !== undefined) {
+      if (typeof config.timeoutMs !== "number" || config.timeoutMs <= 0) {
+        throw new ConfigurationError(
+          "timeoutMs must be a positive number",
+          "timeoutMs"
+        );
+      }
+    }
+    this.apiKey = trimmed;
     this.baseUrl = config.baseUrl;
+    this.timeoutMs = config.timeoutMs;
+    this.logger = config.logger ?? noopLogger;
   }
 
   /**
@@ -154,38 +189,102 @@ export class SendGridClient {
    */
   async send(options: SendEmailOptions): Promise<SendResponse> {
     const from = normalizeFrom(options.from);
-    validateEmailFormat(from.email);
-    validateFromEmailAscii(from);
-
     const personalizations = buildPersonalizations(options);
-    for (const p of personalizations) {
-      validateEmailAddresses(p.to, "to");
-      if (p.cc) validateEmailAddresses(p.cc, "cc");
-      if (p.bcc) validateEmailAddresses(p.bcc, "bcc");
-    }
 
-    validateRecipientCount(personalizations);
-    validatePersonalizationCount(personalizations);
-    validateCustomArgsSize(options.customArgs);
-    validateCategories(options.categories);
-    validateSendAt(options.sendAt);
-    validateReplyToList(options.replyToList);
+    const recipientCount = personalizations.reduce(
+      (sum, p) =>
+        sum +
+        (p.to?.length ?? 0) +
+        (p.cc?.length ?? 0) +
+        (p.bcc?.length ?? 0),
+      0
+    );
 
-    const body = buildMailSendBody(options);
-    const estimatedSize = estimateEmailSize(body);
-    if (estimatedSize >= MAX_EMAIL_SIZE_BYTES) {
-      validateEmailSize(estimatedSize);
-    }
-
-    const result = await sendMail(body, {
-      apiKey: this.apiKey,
-      baseUrl: this.baseUrl,
+    this.logger.debug("Send email validation starting", {
+      fromDomain: redactEmail(from.email),
+      recipientCount,
+      personalizationCount: personalizations.length,
+      hasTemplate: !!options.templateId,
     });
 
-    return {
-      statusCode: result.statusCode,
-      headers: result.headers,
-      rateLimit: result.rateLimit,
-    };
+    let body: MailSendBody;
+    try {
+      validateEmailFormat(from.email);
+      validateFromEmailAscii(from);
+
+      for (const p of personalizations) {
+        validateEmailAddresses(p.to, "to");
+        if (p.cc) validateEmailAddresses(p.cc, "cc");
+        if (p.bcc) validateEmailAddresses(p.bcc, "bcc");
+      }
+
+      validateRecipientCount(personalizations);
+      validatePersonalizationCount(personalizations);
+      validateCustomArgsSize(options.customArgs);
+      validateCategories(options.categories);
+      validateSendAt(options.sendAt);
+      validateReplyToList(options.replyToList);
+
+      body = buildMailSendBody(options);
+      const estimatedSize = estimateEmailSize(body);
+      if (estimatedSize >= MAX_EMAIL_SIZE_BYTES) {
+        validateEmailSize(estimatedSize);
+      }
+    } catch (err) {
+      if (EmailerError.isEmailerError(err)) {
+        this.logger.warn("Send email validation failed", {
+          error: err.message,
+          code: err.code,
+          field: "field" in err ? (err as { field?: string }).field : undefined,
+        });
+      }
+      throw err;
+    }
+
+    try {
+      const result = await sendMail(body, {
+        apiKey: this.apiKey,
+        baseUrl: this.baseUrl,
+        timeoutMs: this.timeoutMs,
+        logger: this.logger,
+      });
+
+      this.logger.info("Send email succeeded", {
+        statusCode: result.statusCode,
+        rateLimitRemaining: result.rateLimit?.remaining,
+      });
+
+      return {
+        statusCode: result.statusCode,
+        headers: result.headers,
+        rateLimit: result.rateLimit,
+      };
+    } catch (err) {
+      if (EmailerError.isEmailerError(err)) {
+        const logContext: LogContext = {
+          error: err.message,
+          code: err.code,
+        };
+        if (err instanceof SendGridError) {
+          logContext.statusCode = err.statusCode;
+          logContext.isRetryable = err.isRetryable();
+        }
+        this.logger.error("Send email failed", logContext);
+      } else {
+        this.logger.error("Send email failed with unexpected error", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      // Re-throw known emailer errors as-is
+      if (EmailerError.isEmailerError(err)) {
+        throw err;
+      }
+      // Wrap unexpected errors with context
+      throw new EmailerError(
+        `Unexpected error while sending email: ${err instanceof Error ? err.message : String(err)}`,
+        ErrorCode.UNKNOWN,
+        { cause: err instanceof Error ? err : undefined }
+      );
+    }
   }
 }

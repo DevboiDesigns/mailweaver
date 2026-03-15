@@ -1,6 +1,14 @@
-import { SendGridError } from "./errors";
+import {
+  SendGridError,
+  TransportError,
+  TimeoutError,
+  SerializationError,
+} from "./errors";
 import type { RateLimitInfo, SendGridErrorDetail } from "./types";
 import { SENDGRID_BASE_URL, MAIL_SEND_PATH } from "./constants";
+import type { Logger } from "./logger";
+import { noopLogger } from "./logger";
+import { createRequestId } from "./logger";
 
 /** Mail Send API request body (SendGrid v3 format) */
 export interface MailSendBody {
@@ -38,6 +46,10 @@ export interface MailSendBody {
 export interface TransportConfig {
   apiKey: string;
   baseUrl?: string;
+  /** Request timeout in milliseconds. Default: no timeout. */
+  timeoutMs?: number;
+  /** Optional logger for structured logging. */
+  logger?: Logger;
 }
 
 function parseRateLimitHeaders(headers: Headers): RateLimitInfo | undefined {
@@ -62,6 +74,18 @@ function headersToRecord(headers: Headers): Record<string, string> {
   return record;
 }
 
+function createFetchBody(body: MailSendBody): string {
+  try {
+    return JSON.stringify(body);
+  } catch (err) {
+    const cause = err instanceof Error ? err : new Error(String(err));
+    throw new SerializationError(
+      "Failed to serialize request body to JSON",
+      { cause }
+    );
+  }
+}
+
 /**
  * Send mail via SendGrid v3 API.
  */
@@ -69,22 +93,96 @@ export async function sendMail(
   body: MailSendBody,
   config: TransportConfig
 ): Promise<{ statusCode: number; headers: Record<string, string>; rateLimit?: RateLimitInfo }> {
+  const logger = config.logger ?? noopLogger;
+  const requestId = createRequestId();
+  const log = logger.child ? logger.child({ requestId }) : logger;
+
   const baseUrl = config.baseUrl ?? SENDGRID_BASE_URL;
   const url = `${baseUrl}${MAIL_SEND_PATH}`;
+  const timeoutMs = config.timeoutMs;
 
-  const response = await fetch(url, {
+  const recipientCount = Array.isArray(body.personalizations)
+    ? body.personalizations.reduce(
+        (sum, p) => sum + (p.to?.length ?? 0) + (p.cc?.length ?? 0) + (p.bcc?.length ?? 0),
+        0
+      )
+    : 0;
+
+  log.debug("SendGrid request starting", {
+    url: `${baseUrl}${MAIL_SEND_PATH}`,
+    recipientCount,
+    personalizationCount: body.personalizations.length,
+    hasTemplate: !!body.template_id,
+    timeoutMs: timeoutMs ?? null,
+  });
+
+  let bodyStr: string;
+  try {
+    bodyStr = createFetchBody(body);
+  } catch (err) {
+    log.error("Request body serialization failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    if (err instanceof SerializationError) throw err;
+    throw new SerializationError("Failed to serialize request body", {
+      cause: err instanceof Error ? err : undefined,
+    });
+  }
+
+  const controller = timeoutMs ? new AbortController() : undefined;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : undefined;
+
+  const fetchOptions: RequestInit = {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
-  });
+    body: bodyStr,
+    signal: controller?.signal,
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(url, fetchOptions);
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.name === "AbortError") {
+        log.error("Request timed out", { timeoutMs: timeoutMs! });
+        throw new TimeoutError(
+          `Request timed out after ${timeoutMs}ms`,
+          timeoutMs!,
+          { cause: err }
+        );
+      }
+      log.error("Network request failed", {
+        error: err.message,
+        errorName: err.name,
+      });
+      throw new TransportError(
+        `Network request failed: ${err.message}`,
+        { cause: err }
+      );
+    }
+    log.error("Network request failed", { error: String(err) });
+    throw new TransportError(`Network request failed: ${String(err)}`, {
+      cause: err instanceof Error ? err : undefined,
+    });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 
   const responseHeaders = headersToRecord(response.headers);
   const rateLimit = parseRateLimitHeaders(response.headers);
 
   if (response.ok) {
+    log.info("SendGrid request succeeded", {
+      statusCode: response.status,
+      rateLimitRemaining: rateLimit?.remaining,
+      rateLimitReset: rateLimit?.reset,
+    });
     return {
       statusCode: response.status,
       headers: responseHeaders,
@@ -94,7 +192,7 @@ export async function sendMail(
 
   let errors: SendGridErrorDetail[] = [];
   try {
-    const json = await response.json();
+    const json = (await response.json()) as { errors?: SendGridErrorDetail[] };
     if (json.errors && Array.isArray(json.errors)) {
       errors = json.errors;
     }
@@ -106,10 +204,19 @@ export async function sendMail(
   const message =
     errorMessages || `SendGrid API error: ${response.status} ${response.statusText}`;
 
-  throw new SendGridError(
+  const sendGridError = new SendGridError(
     message,
     response.status,
     errors,
     rateLimit
   );
+
+  log.error("SendGrid API error", {
+    statusCode: response.status,
+    errorSummary: errors.map((e) => e.message).join("; "),
+    rateLimitRemaining: rateLimit?.remaining,
+    isRetryable: sendGridError.isRetryable(),
+  });
+
+  throw sendGridError;
 }
