@@ -44,7 +44,7 @@ async function main() {
     const result = await client.send({
       to: toEmail,
       from: fromEmail!,
-      subject: "Emailer Library – Test Email",
+      subject: "Mailweaver – Test Email",
       text: "This is a test email from mailweaver. If you received this, your SendGrid setup is working correctly.",
       html: "<p>This is a test email from <strong>mailweaver</strong>.</p><p>If you received this, your SendGrid setup is working correctly.</p>",
     });
