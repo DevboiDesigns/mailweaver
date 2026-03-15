@@ -46,6 +46,23 @@ const clientWithOptions = new SendGridClient({
 
 Ensure your `from` address is a [verified sender](https://docs.sendgrid.com/ui/sending-email/sender-verification) in your SendGrid account.
 
+### Test send (development)
+
+When developing or cloning the repo, you can verify your SendGrid setup by sending a real test email:
+
+```bash
+SENDGRID_API_KEY=your_key SENDGRID_FROM_EMAIL=noreply@yourdomain.com npm run test:send -- recipient@example.com
+```
+
+Required environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `SENDGRID_API_KEY` | Your SendGrid API key |
+| `SENDGRID_FROM_EMAIL` | A verified sender address from your SendGrid account |
+
+The `--` passes the recipient email to the script. You can also load env vars from `.env.local` or similar if your tooling supports it.
+
 ## Basic Usage
 
 ### Simple send (string addresses)
