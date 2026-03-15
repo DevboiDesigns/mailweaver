@@ -1,6 +1,6 @@
 {
   "name": "omnimailer",
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0",
   "description": "Library for sending emails",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
